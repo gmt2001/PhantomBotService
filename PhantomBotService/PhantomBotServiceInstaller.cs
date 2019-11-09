@@ -61,6 +61,8 @@ namespace PhantomBotService
                 return;
             }
 
+            this.appFolder = this.appFolder.Trim();
+
             File.Delete(this.appFolder + "\\PhantomBotService.config");
         }
 
@@ -89,11 +91,12 @@ namespace PhantomBotService
                 return;
             }
 
+            this.appFolder = this.appFolder.Trim();
+
             FileStream f = File.Open(this.appFolder + "\\PhantomBotService.config", FileMode.OpenOrCreate, FileAccess.Write);
 
             string data = "[Bot Install Directory]" + Environment.NewLine +
                 this.appFolder.Replace("\\\\", "") + Environment.NewLine + Environment.NewLine +
-                "[Bot launch Script]" + Environment.NewLine + "launch-service.bat" + Environment.NewLine + Environment.NewLine +
                 "[Logging Enabled]" + Environment.NewLine + "false";
 
             f.Write(Encoding.UTF8.GetBytes(data), 0, data.Length);

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.ServiceProcess;
@@ -19,6 +20,17 @@ namespace PhantomBotService
         public PhantomBotService()
         {
             this.InitializeComponent();
+
+            ((ISupportInitialize)(this.EventLog)).BeginInit();
+            if (!EventLog.SourceExists(this.EventLog.Source))
+            {
+                EventLog.CreateEventSource(this.EventLog.Source, this.EventLog.Log);
+            }
+            ((ISupportInitialize)(this.EventLog)).EndInit();
+
+            this.EventLog.Source = this.ServiceName;
+            this.EventLog.Log = "Application";
+
             string cmdLine = Environment.CommandLine.Remove(Environment.CommandLine.Length - 2, 2).Remove(0, 1);
             string appFolder = Path.GetDirectoryName(cmdLine);
             string path = appFolder + "\\PhantomBotService.config";
@@ -28,8 +40,9 @@ namespace PhantomBotService
             {
                 this.f = File.Open(path, FileMode.Open, FileAccess.Read);
             }
-            catch (IOException)
+            catch (IOException e)
             {
+                this.EventLog.WriteEntry("Failed to open config file: " + path + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace, EventLogEntryType.Error);
             }
 
             byte[] b = new byte[1024];
@@ -55,20 +68,23 @@ namespace PhantomBotService
             string[] sdata = configData.Split(new string[] { Environment.NewLine }, StringSplitOptions.None);
 
             string workingDir = sdata[1];
-            string exec = sdata[4];
-            this.log = sdata[7].Equals("true", StringComparison.OrdinalIgnoreCase);
+            this.log = sdata[4].Equals("true", StringComparison.OrdinalIgnoreCase);
 
             this.phantomBotProcess = new Process();
             this.phantomBotProcess.StartInfo.WorkingDirectory = workingDir;
-            this.phantomBotProcess.StartInfo.FileName = exec;
+            this.phantomBotProcess.StartInfo.FileName = "java-runtime\\bin\\java.exe";
+            this.phantomBotProcess.StartInfo.Arguments = "--add-opens java.base/java.lang=ALL-UNNAMED -Djava.security.policy=config/security -Dinteractive -Xms1m -Dfile.encoding=UTF-8 -jar \"PhantomBot.jar\"";
             this.phantomBotProcess.StartInfo.CreateNoWindow = true;
-            this.phantomBotProcess.StartInfo.UseShellExecute = true;
+            this.phantomBotProcess.StartInfo.UseShellExecute = false;
             this.phantomBotProcess.EnableRaisingEvents = true;
 
             this.phantomBotProcess.Exited += this.PhantomBotProcess_Exited;
 
             if (this.log)
             {
+                this.phantomBotProcess.StartInfo.RedirectStandardOutput = true;
+                this.phantomBotProcess.StartInfo.RedirectStandardError = true;
+                this.phantomBotProcess.StartInfo.RedirectStandardInput = true;
                 this.phantomBotProcess.OutputDataReceived += this.PhantomBotProcess_OutputDataReceived;
                 this.phantomBotProcess.ErrorDataReceived += this.PhantomBotProcess_ErrorDataReceived;
             }
@@ -115,6 +131,8 @@ namespace PhantomBotService
 
         protected override void OnStart(string[] args)
         {
+            string path = this.phantomBotProcess.StartInfo.WorkingDirectory + "\\PhantomBotService." + DateTime.Now.ToFileTime() + ".log";
+
             try
             {
                 if (this.log)
@@ -123,21 +141,68 @@ namespace PhantomBotService
                     {
                         this.f.Close();
                     }
-
-                    string path = this.phantomBotProcess.StartInfo.WorkingDirectory + "\\PhantomBotService." + DateTime.Now.ToFileTime() + ".log";
-                    this.f = File.Open(path, FileMode.OpenOrCreate, FileAccess.Write);
+                    this.f = File.Open(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite);
                     this.logLine(DateTime.Now.ToShortDateString() + " @ " + DateTime.Now.ToShortTimeString() + " >> Starting PhantomBot" + Environment.NewLine);
                 }
 
-                this.phantomBotProcess.Start();
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                this.EventLog.WriteEntry("Failed to open log file: " + path + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace, EventLogEntryType.Error);
             }
+
+            try
+            {
+                this.phantomBotProcess.Start();
+                this.phantomBotProcess.BeginErrorReadLine();
+                this.phantomBotProcess.BeginOutputReadLine();
+            }
+            catch (Exception e)
+            {
+                this.EventLog.WriteEntry("Failed to start process: " + this.phantomBotProcess.StartInfo.WorkingDirectory + "\\" + this.phantomBotProcess.StartInfo.FileName + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace, EventLogEntryType.Error);
+            }
+
         }
 
         protected override void OnStop()
         {
+            try
+            {
+                this.allowExit = true;
+
+                using (StreamWriter writer = this.phantomBotProcess.StandardInput)
+                {
+                    writer.WriteLine("exit");
+                }
+
+                for (int i = 0; i < 30; i++)
+                {
+                    if (this.phantomBotProcess.HasExited)
+                    {
+                        this.phantomBotProcess.Close();
+                        break;
+                    }
+
+                    Thread.Sleep(500);
+                }
+            }
+            catch (Exception e)
+            {
+                this.EventLog.WriteEntry("Failed to end process" + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace, EventLogEntryType.Error);
+            }
+
+            try
+            {
+                if (!this.phantomBotProcess.HasExited)
+                {
+                    this.phantomBotProcess.Kill();
+                }
+            }
+            catch (Exception e)
+            {
+                this.EventLog.WriteEntry("Failed to kill process" + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace, EventLogEntryType.Error);
+            }
+
             try
             {
                 if (this.log)
@@ -145,25 +210,25 @@ namespace PhantomBotService
                     this.logLine(DateTime.Now.ToShortDateString() + " @ " + DateTime.Now.ToShortTimeString() + " >> Stopping PhantomBot" + Environment.NewLine);
                     this.f.Close();
                 }
-
-                this.allowExit = true;
-                this.phantomBotProcess.CloseMainWindow();
-                Thread.Sleep(15000);
-
-                if (this.phantomBotProcess.HasExited)
-                {
-                    this.phantomBotProcess.Close();
-                }
-                else
-                {
-                    this.phantomBotProcess.Kill();
-                }
             }
-            catch (Exception)
+            catch (Exception e)
             {
+                this.EventLog.WriteEntry("Failed to close log file" + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace, EventLogEntryType.Error);
             }
         }
 
-        private void logLine(string logline) => this.f.Write(Encoding.UTF8.GetBytes(logline), 0, logline.Length);
+        private void logLine(string logline)
+        {
+            try
+            {
+                this.f.Write(Encoding.UTF8.GetBytes(logline), 0, logline.Length);
+                this.f.Flush();
+            }
+            catch (Exception e)
+            {
+                this.EventLog.WriteEntry("Failed to write to log file: " + logline + Environment.NewLine + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace, EventLogEntryType.Error);
+            }
+
+        }
     }
 }

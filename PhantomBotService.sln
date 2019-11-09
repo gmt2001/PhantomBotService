@@ -6,9 +6,6 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhantomBotService", "PhantomBotService\PhantomBotService.csproj", "{AAE23004-3FF9-401B-987C-E925B153BF32}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{60E30BA8-C0AB-438B-A495-08F257B69015}"
-	ProjectSection(SolutionItems) = preProject
-		launch-service.bat = launch-service.bat
-	EndProjectSection
 EndProject
 Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "PhantomBotServiceSetup", "PhantomBotServiceSetup\PhantomBotServiceSetup.vdproj", "{C6AAB224-8AF7-4664-B02B-C44BEB893FAB}"
 EndProject
