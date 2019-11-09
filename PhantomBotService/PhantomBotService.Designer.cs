@@ -1,6 +1,6 @@
 ﻿namespace PhantomBotService
 {
-    partial class Service1
+    partial class PhantomBotService
     {
         /// <summary> 
         /// Required designer variable.
