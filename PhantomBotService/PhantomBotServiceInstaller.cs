@@ -38,7 +38,7 @@ namespace PhantomBotService
         {
             this.serviceInstalled = true;
 
-            this.appFolder = this.Context.Parameters["INSTALLDIR"];
+            this.appFolder = this.Context.Parameters["TargetDir"];
 
             this.UpdateConfig();
         }
@@ -47,7 +47,7 @@ namespace PhantomBotService
         {
             this.processInstalled = true;
 
-            this.appFolder = this.Context.Parameters["INSTALLDIR"];
+            this.appFolder = this.Context.Parameters["TargetDir"];
 
             this.UpdateConfig();
         }

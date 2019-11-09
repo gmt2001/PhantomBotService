@@ -95,7 +95,7 @@
             "Sequence" = "3:1"
             "Identifier" = "8:_19AA510A_689F_4C83_BF44_54B1FD306380"
             "InstallerClass" = "11:TRUE"
-            "CustomActionData" = "8:"
+            "CustomActionData" = "8:/TargetDir=\"[TARGETDIR]\""
             }
             "{4AA51A2D-7D85-4A59-BA75-B0809FC8B380}:_B8B1759BAB1D43D6A07D51F5BA2E97E9"
             {
@@ -270,7 +270,7 @@
         "Name" = "8:Microsoft Visual Studio"
         "ProductName" = "8:PhantomBotServiceSetup"
         "ProductCode" = "8:{F498F94E-A2B9-4930-9FB9-E6A281915231}"
-        "PackageCode" = "8:{AB056A05-43FD-4767-83A3-8EF36A86B406}"
+        "PackageCode" = "8:{948BE795-B721-45D9-82AF-0F5E947AB6F6}"
         "UpgradeCode" = "8:{D81B927D-224E-4578-A6D8-D0A4C02D3130}"
         "AspNetVersion" = "8:4.0.30319.0"
         "RestartWWWService" = "11:FALSE"
