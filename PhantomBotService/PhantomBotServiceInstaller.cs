@@ -23,15 +23,45 @@ namespace PhantomBotService
 
             processInstaller.Account = ServiceAccount.LocalSystem;
             processInstaller.AfterInstall += this.ProcessInstaller_AfterInstall;
+            processInstaller.AfterUninstall += this.ProcessInstaller_AfterUninstall;
 
             serviceInstaller.DisplayName = "PhantomBotService";
             serviceInstaller.DelayedAutoStart = false;
             serviceInstaller.StartType = ServiceStartMode.Automatic;
             serviceInstaller.ServiceName = "PhantomBotService";
             serviceInstaller.AfterInstall += this.ServiceInstaller_AfterInstall;
+            serviceInstaller.AfterUninstall += this.ServiceInstaller_AfterUninstall;
 
             this.Installers.Add(processInstaller);
             this.Installers.Add(serviceInstaller);
+        }
+
+        private void ServiceInstaller_AfterUninstall(object sender, InstallEventArgs e)
+        {
+            this.serviceInstalled = true;
+
+            this.appFolder = this.Context.Parameters["TargetDir"];
+
+            this.DeleteConfig();
+        }
+
+        private void ProcessInstaller_AfterUninstall(object sender, InstallEventArgs e)
+        {
+            this.processInstalled = true;
+
+            this.appFolder = this.Context.Parameters["TargetDir"];
+
+            this.DeleteConfig();
+        }
+
+        private void DeleteConfig()
+        {
+            if (!this.processInstalled || !this.serviceInstalled)
+            {
+                return;
+            }
+
+            File.Delete(this.appFolder + "\\PhantomBotService.config");
         }
 
         private void ServiceInstaller_AfterInstall(object sender, InstallEventArgs e)
@@ -40,7 +70,7 @@ namespace PhantomBotService
 
             this.appFolder = this.Context.Parameters["TargetDir"];
 
-            this.UpdateConfig();
+            this.CreateConfig();
         }
 
         private void ProcessInstaller_AfterInstall(object sender, InstallEventArgs e)
@@ -49,17 +79,17 @@ namespace PhantomBotService
 
             this.appFolder = this.Context.Parameters["TargetDir"];
 
-            this.UpdateConfig();
+            this.CreateConfig();
         }
 
-        private void UpdateConfig()
+        private void CreateConfig()
         {
             if (!this.processInstalled || !this.serviceInstalled)
             {
                 return;
             }
 
-            FileStream f = File.Open(this.appFolder, FileMode.OpenOrCreate, FileAccess.Write);
+            FileStream f = File.Open(this.appFolder + "\\PhantomBotService.config", FileMode.OpenOrCreate, FileAccess.Write);
 
             string data = "[Bot Install Directory]" + Environment.NewLine +
                 this.appFolder.Replace("\\\\", "") + Environment.NewLine + Environment.NewLine +
