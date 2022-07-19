@@ -10,9 +10,9 @@ namespace PhantomBotService
 {
     public partial class PhantomBotService : ServiceBase
     {
-        private Process phantomBotProcess;
+        private readonly Process phantomBotProcess;
         private FileStream f;
-        private bool log = false;
+        private readonly bool log = false;
         private bool allowExit = false;
         private DateTime nextAttempt;
         private System.Timers.Timer t;
@@ -21,12 +21,12 @@ namespace PhantomBotService
         {
             this.InitializeComponent();
 
-            ((ISupportInitialize)(this.EventLog)).BeginInit();
+            ((ISupportInitialize)this.EventLog).BeginInit();
             if (!EventLog.SourceExists(this.EventLog.Source))
             {
                 EventLog.CreateEventSource(this.EventLog.Source, this.EventLog.Log);
             }
-            ((ISupportInitialize)(this.EventLog)).EndInit();
+            ((ISupportInitialize)this.EventLog).EndInit();
 
             this.EventLog.Source = this.ServiceName;
             this.EventLog.Log = "Application";
@@ -67,13 +67,45 @@ namespace PhantomBotService
 
             string[] sdata = configData.Split(new string[] { Environment.NewLine }, StringSplitOptions.None);
 
-            string workingDir = sdata[1];
-            this.log = sdata[4].Equals("true", StringComparison.OrdinalIgnoreCase);
+            string workingDir = null;
+            string launchCommand = @"java-runtime\bin\java";
+            string arguments = "--add-exports java.base/sun.security.x509=ALL-UNNAMED --add-opens java.base/java.lang=ALL-UNNAMED -Duser.language=en -Djava.security.policy=config/security -Dinteractive -Xms1m -Dfile.encoding=UTF-8 -jar \"PhantomBot.jar\"";
+            for (int i = 0; i < sdata.Length; i++)
+            {
+                if (i + 1 < sdata.Length && !string.IsNullOrWhiteSpace(sdata[i + 1])) {
+                    if (sdata[i].Trim().Equals("[Bot Install Directory]", StringComparison.OrdinalIgnoreCase))
+                    {
+                        workingDir = sdata[i + 1].Trim();
+                    }
+                    else if (sdata[i].Trim().Equals("[Logging Enabled]", StringComparison.OrdinalIgnoreCase))
+                    {
+                        this.log = sdata[i + 1].Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+                    }
+                    else if (sdata[i].Trim().Equals("[Launch Command]", StringComparison.OrdinalIgnoreCase))
+                    {
+                        launchCommand = sdata[i + 1].Trim();
+                    }
+                    else if (sdata[i].Trim().Equals("[Launch Arguments]", StringComparison.OrdinalIgnoreCase))
+                    {
+                        arguments = sdata[i + 1].Trim();
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(workingDir))
+            {
+                this.EventLog.WriteEntry("Missing or invalid [Bot Install Directory] directive in config", EventLogEntryType.Error);
+            }
+
+            if (!workingDir.EndsWith(@"\"))
+            {
+                workingDir += @"\";
+            }
 
             this.phantomBotProcess = new Process();
             this.phantomBotProcess.StartInfo.WorkingDirectory = workingDir;
-            this.phantomBotProcess.StartInfo.FileName = "java-runtime\\bin\\java.exe";
-            this.phantomBotProcess.StartInfo.Arguments = "--add-opens java.base/java.lang=ALL-UNNAMED -Djava.security.policy=config/security -Dinteractive -Xms1m -Dfile.encoding=UTF-8 -jar \"PhantomBot.jar\"";
+            this.phantomBotProcess.StartInfo.FileName = workingDir + launchCommand;
+            this.phantomBotProcess.StartInfo.Arguments = arguments;
             this.phantomBotProcess.StartInfo.CreateNoWindow = true;
             this.phantomBotProcess.StartInfo.UseShellExecute = false;
             this.phantomBotProcess.EnableRaisingEvents = true;
@@ -90,13 +122,21 @@ namespace PhantomBotService
             }
         }
 
-        private void PhantomBotProcess_ErrorDataReceived(object sender, DataReceivedEventArgs e) => this.logLine("!! " + e.Data + Environment.NewLine);
-        private void PhantomBotProcess_OutputDataReceived(object sender, DataReceivedEventArgs e) => this.logLine(">> " + e.Data + Environment.NewLine);
+        private void PhantomBotProcess_ErrorDataReceived(object sender, DataReceivedEventArgs e) => this.LogLine("!! " + e.Data + Environment.NewLine);
+        private void PhantomBotProcess_OutputDataReceived(object sender, DataReceivedEventArgs e) => this.LogLine(">> " + e.Data + Environment.NewLine);
 
         private void PhantomBotProcess_Exited(object sender, EventArgs e)
         {
+            if (this.log)
+            {
+                this.LogLine(">> PhantomBot has exited" + Environment.NewLine);
+            }
             if (this.allowExit)
             {
+                if (this.log)
+                {
+                    this.LogLine(">> Service stopping, allowing exit" + Environment.NewLine);
+                }
                 return;
             }
 
@@ -109,13 +149,24 @@ namespace PhantomBotService
 
             if (this.phantomBotProcess.HasExited)
             {
-                if (DateTime.Compare(this.nextAttempt, DateTime.Now) >= 0)
+                if (this.log)
+                {
+                    this.LogLine(">> Restarting the bot" + Environment.NewLine);
+                }
+                if (DateTime.Compare(this.nextAttempt, DateTime.Now) <= 0)
                 {
                     this.nextAttempt = DateTime.Now.AddSeconds(5);
+                    this.phantomBotProcess.CancelErrorRead();
+                    this.phantomBotProcess.CancelOutputRead();
                     this.OnStart(null);
                 }
                 else
                 {
+                    if (this.log)
+                    {
+                        this.LogLine(">> Delaying restart 5 seconds" + Environment.NewLine);
+                    }
+
                     this.t = new System.Timers.Timer
                     {
                         Interval = 5000,
@@ -131,7 +182,7 @@ namespace PhantomBotService
 
         protected override void OnStart(string[] args)
         {
-            string path = this.phantomBotProcess.StartInfo.WorkingDirectory + "\\PhantomBotService." + DateTime.Now.ToFileTime() + ".log";
+            string path = this.phantomBotProcess.StartInfo.WorkingDirectory + "\\PhantomBotService." + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".log";
 
             try
             {
@@ -142,7 +193,7 @@ namespace PhantomBotService
                         this.f.Close();
                     }
                     this.f = File.Open(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite);
-                    this.logLine(DateTime.Now.ToShortDateString() + " @ " + DateTime.Now.ToShortTimeString() + " >> Starting PhantomBot" + Environment.NewLine);
+                    this.LogLine(DateTime.Now.ToShortDateString() + " @ " + DateTime.Now.ToShortTimeString() + " >> Starting PhantomBot" + Environment.NewLine);
                 }
 
             }
@@ -153,19 +204,25 @@ namespace PhantomBotService
 
             try
             {
-                this.phantomBotProcess.Start();
+                _ = this.phantomBotProcess.Start();
                 this.phantomBotProcess.BeginErrorReadLine();
                 this.phantomBotProcess.BeginOutputReadLine();
             }
             catch (Exception e)
             {
-                this.EventLog.WriteEntry("Failed to start process: " + this.phantomBotProcess.StartInfo.WorkingDirectory + "\\" + this.phantomBotProcess.StartInfo.FileName + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace, EventLogEntryType.Error);
+                string msg = "Failed to start process: " + this.phantomBotProcess.StartInfo.WorkingDirectory + Environment.NewLine + this.phantomBotProcess.StartInfo.FileName + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace;
+                if (this.log)
+                {
+                    this.LogLine("!! " + msg + Environment.NewLine);
+                }
+                this.EventLog.WriteEntry(msg, EventLogEntryType.Error);
             }
 
         }
 
         protected override void OnStop()
         {
+            bool exited = false;
             try
             {
                 this.allowExit = true;
@@ -179,6 +236,9 @@ namespace PhantomBotService
                 {
                     if (this.phantomBotProcess.HasExited)
                     {
+                        exited = true;
+                        this.phantomBotProcess.CancelErrorRead();
+                        this.phantomBotProcess.CancelOutputRead();
                         this.phantomBotProcess.Close();
                         break;
                     }
@@ -188,26 +248,36 @@ namespace PhantomBotService
             }
             catch (Exception e)
             {
-                this.EventLog.WriteEntry("Failed to end process" + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace, EventLogEntryType.Error);
+                string msg = "Failed to end process" + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace;
+                if (this.log)
+                {
+                    this.LogLine("!! " + msg + Environment.NewLine);
+                }
+                this.EventLog.WriteEntry(msg, EventLogEntryType.Error);
             }
 
             try
             {
-                if (!this.phantomBotProcess.HasExited)
+                if (!exited && !this.phantomBotProcess.HasExited)
                 {
                     this.phantomBotProcess.Kill();
                 }
             }
             catch (Exception e)
             {
-                this.EventLog.WriteEntry("Failed to kill process" + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace, EventLogEntryType.Error);
+                string msg = "Failed to kill process" + Environment.NewLine + e.GetType().FullName + ": " + e.Message + Environment.NewLine + e.StackTrace;
+                if (this.log)
+                {
+                    this.LogLine("!! " + msg + Environment.NewLine);
+                }
+                this.EventLog.WriteEntry(msg, EventLogEntryType.Error);
             }
 
             try
             {
                 if (this.log)
                 {
-                    this.logLine(DateTime.Now.ToShortDateString() + " @ " + DateTime.Now.ToShortTimeString() + " >> Stopping PhantomBot" + Environment.NewLine);
+                    this.LogLine(DateTime.Now.ToShortDateString() + " @ " + DateTime.Now.ToShortTimeString() + " >> Stopping PhantomBot" + Environment.NewLine);
                     this.f.Close();
                 }
             }
@@ -217,7 +287,7 @@ namespace PhantomBotService
             }
         }
 
-        private void logLine(string logline)
+        private void LogLine(string logline)
         {
             try
             {
